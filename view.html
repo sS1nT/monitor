@@ -31,7 +31,7 @@ async function addOp(ix,y){if(!LS('gh_token')){alert('Сначала встав�
   const p=D.P[ix],q=parseInt(prompt(y=='add'?'Сколько единиц поставлено?':'Сколько единиц продано?','1'));if(!(q>0))return;
   if(y=='sell'&&q>p.a-p.s){alert('Остаток меньше: '+(p.a-p.s));return}
   pend.push({u:(crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random().toString(36).slice(2)),t:Date.now(),p:p.i,y,q,s:0});savePend();rebuild();view();await flush();view()}
-const tokCard=()=>GHM&&!LS('gh_token')?'<div class="card"><b>Ввод с телефона</b><div class="mu" style="margin:2px 0 6px">Вставьте токен GitHub один раз. Он хранится только на этом телефоне.</div><input id="tk" type="password" placeholder="github_pat_…" style="width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx)"><button id="tks" style="margin-top:6px">Сохранить токен</button></div>':'';
+const tokCard=()=>GHM&&!LS('gh_token')?'<div class="card"><b>Ввод с телефона</b><div class="mu" style="margin:2px 0 6px">Вставьте токен GitHub один раз. Он хранится только на этом телефоне.</div><input id="tk" type="password" placeholder="github_pat_…" style="width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx)"><button id="tks" style="margin-top:6px">Сохранить токен</button></div>':(GHM?'<div style="text-align:center;margin-top:8px"><button id="tkc" style="font-size:10px;padding:4px 10px">Поменять токен</button></div>':'');
 async function unpack(s){s=s.replace(/-/g,'+').replace(/_/g,'/');const bin=atob(s),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return JSON.parse(await new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text())}
 function calc(){D.P=D.p.map(p=>({...p,a:0,s:0,inc:0,exp:0}));D.days={};
   D.l.forEach(([d,i,ty,q,amt])=>{const p=D.P[i];if(ty){p.s+=q;p.inc+=amt}else{p.a+=q;p.exp+=amt}(D.days[d]=D.days[d]||[]).push({i,ty,q,amt})})}
@@ -55,6 +55,7 @@ function view(){
   $('#app').innerHTML=h;
   document.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>addOp(+b.dataset.a,'add'));
   document.querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>addOp(+b.dataset.s,'sell'));
+  if($('#tkc'))$('#tkc').onclick=()=>{if(confirm('Удалить сохранённый токен и ввести новый?')){try{localStorage.removeItem('gh_token')}catch(e){}view()}};
   if($('#tks'))$('#tks').onclick=()=>{const t=$('#tk').value.trim();if(t){LSset('gh_token',t);view()}};
   if($('#rf'))$('#rf').onclick=()=>loadGH().catch(e=>alert(e.message));
   document.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{tab=b.dataset.t;view()});
