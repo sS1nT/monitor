@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Аналитика доходов</title>
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--tx:#1b1f24;--mu:#6b7280;--bd:#e2e5ea;--ac:#2563eb;--gr:#16a34a;--rd:#dc2626}
+@media (prefers-color-scheme:dark){:root{--bg:#14161a;--card:#1e2128;--tx:#eceef2;--mu:#9aa1ad;--bd:#2f343d;--ac:#5b8cff;--gr:#22c55e;--rd:#ef4444}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:12px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:10px;max-width:640px;margin:0 auto}
+button{font:inherit;cursor:pointer;border:1px solid var(--bd);background:var(--card);color:var(--tx);border-radius:8px;padding:6px 10px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.tabs .on{background:var(--ac);border-color:var(--ac);color:#fff}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:10px;margin-bottom:8px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px}.mu{color:var(--mu);font-size:10px}b{font-weight:600}.a{color:var(--gr)}.s{color:var(--rd)}
+.bar{height:6px;border-radius:3px;margin-top:3px}.tr{background:var(--bd);border-radius:3px;overflow:hidden}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;text-align:center}.cal div{border:1px solid var(--bd);border-radius:6px;min-height:42px;padding:2px;font-size:10px;background:var(--card)}.cal .h{border:0;background:none;min-height:0;color:var(--mu)}.cal .has{border-color:var(--ac);cursor:pointer}.cal .sel{background:var(--ac);color:#fff}
+.empty{color:var(--mu);text-align:center;padding:30px}
+</style></head><body><div id="app"><div class="empty">Загрузка…</div></div>
+<script>
+const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])),fmt=n=>(+n||0).toLocaleString('ru-RU',{maximumFractionDigits:2});
+let D=null,tab='items',cal=new Date(),sel=null;
+const H=new URLSearchParams(location.hash.slice(1)),GHM=!!(H.get('r')&&H.get('k'));
+const b64u=s=>{s=s.replace(/-/g,'+').replace(/_/g,'/');const b=atob(s),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u};
+async function unpack(s){s=s.replace(/-/g,'+').replace(/_/g,'/');const bin=atob(s),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return JSON.parse(await new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text())}
+function calc(){D.P=D.p.map(p=>({...p,a:0,s:0,inc:0,exp:0}));D.days={};
+  D.l.forEach(([d,i,ty,q,amt])=>{const p=D.P[i];if(ty){p.s+=q;p.inc+=amt}else{p.a+=q;p.exp+=amt}(D.days[d]=D.days[d]||[]).push({i,ty,q,amt})})}
+const dnum=(y,m,d)=>y*10000+(m+1)*100+d,dstr=n=>`${n%100}.${String(Math.floor(n/100)%100).padStart(2,'0')}.${Math.floor(n/10000)}`;
+function view(){
+  const T=[['items','Товары'],['cal','Календарь'],['chart','График'],['fin','Доход и расход']];
+  let h=`<div class="row"><span class="mu">Данные на ${new Date(D.t).toLocaleString('ru-RU')}</span>${GHM?'<button id="rf">Обновить</button>':''}</div><div class="tabs">${T.map(t=>`<button data-t="${t[0]}" class="${tab==t[0]?'on':''}">${t[1]}</button>`).join('')}</div>`;
+  const P=D.P,mx=Math.max(1,...P.map(p=>Math.max(p.a,p.s)));
+  if(!P.length)h+='<div class="empty">Нет товаров</div>';
+  else if(tab=='items')h+=P.map(p=>`<div class="card"><div class="row"><b>${esc(p.n)}</b><span><span class="mu">остаток</span> <b>${p.a-p.s}</b></span></div><div class="mu">Закупка ${fmt(p.b)} ₽ · Цена ${fmt(p.f)} ₽ · Конкуренты ${p.c?fmt(p.c)+' ₽':'—'}</div><div class="mu">Поставлено ${p.a} · Продано ${p.s}</div></div>`).join('');
+  else if(tab=='chart')h+=P.map(p=>`<div class="card"><div class="row"><b>${esc(p.n)}</b><span><b class="a">+${p.a}</b> <b class="s">−${p.s}</b></span></div><div class="tr"><div class="bar" style="width:${p.a/mx*100}%;background:var(--gr);margin:0"></div></div><div class="tr"><div class="bar" style="width:${p.s/mx*100}%;background:var(--rd)"></div></div></div>`).join('');
+  else if(tab=='fin'){const I=P.reduce((a,p)=>a+p.inc,0),E=P.reduce((a,p)=>a+p.exp,0);
+    h+=`<div class="card row"><div>Доход<br><b class="a">${fmt(I)} ₽</b></div><div>Расход<br><b class="s">${fmt(E)} ₽</b></div><div>Итого<br><b>${fmt(I-E)} ₽</b></div></div>`;
+    h+=Object.keys(D.days).sort((a,b)=>b-a).slice(0,40).map(d=>D.days[d].map(o=>`<div class="mu" style="padding:3px 0;border-bottom:1px solid var(--bd)">${dstr(+d)} · ${esc(P[o.i].n)} · ${o.ty?`<span class="a">продажа +${fmt(o.amt)} ₽</span>`:`<span class="s">закупка −${fmt(o.amt)} ₽</span>`} (${o.q} шт.)</div>`).join('')).join('')}
+  else{const y=cal.getFullYear(),m=cal.getMonth(),n=new Date(y,m+1,0).getDate(),off=(new Date(y,m,1).getDay()+6)%7;
+    h+=`<div class="row" style="margin-bottom:6px"><button data-m="-1">◀</button><b>${cal.toLocaleDateString('ru-RU',{month:'long',year:'numeric'})}</b><button data-m="1">▶</button></div><div class="cal">${['Пн','Вт','Ср','Чт','Пт','Сб','Вс'].map(d=>`<div class="h">${d}</div>`).join('')}${'<div class="h"></div>'.repeat(off)}`;
+    for(let d=1;d<=n;d++){const k=dnum(y,m,d),o=D.days[k],s=o?o.filter(x=>x.ty).reduce((a,x)=>a+x.q,0):0,a=o?o.filter(x=>!x.ty).reduce((a,x)=>a+x.q,0):0;
+      h+=`<div class="${o?'has':''}${sel==k?' sel':''}" ${o?`data-d="${k}"`:''}>${d}${o?`<br>${s?'−'+s:''} ${a?'+'+a:''}`:''}</div>`}
+    h+='</div>';
+    if(sel&&D.days[sel])h+=`<div class="card" style="margin-top:8px"><b>${dstr(sel)}</b>${['Поставка','Продажа'].map((t,ty)=>`<div style="margin-top:6px" class="${ty?'s':'a'}"><b>${t}</b></div>`+(D.days[sel].filter(o=>o.ty==ty).map(o=>`<div class="row"><span>${esc(P[o.i].n)}</span><b>${o.q} шт.</b></div>`).join('')||'<div class="mu">нет</div>')).join('')}</div>`}
+  $('#app').innerHTML=h;
+  if($('#rf'))$('#rf').onclick=()=>loadGH().catch(e=>alert(e.message));
+  document.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{tab=b.dataset.t;view()});
+  document.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{cal=new Date(cal.getFullYear(),cal.getMonth()+ +b.dataset.m,1);view()});
+  document.querySelectorAll('[data-d]').forEach(e=>e.onclick=()=>{sel=+e.dataset.d;view()});
+}
+async function loadGH(){
+  const r=await fetch('https://api.github.com/repos/'+H.get('r')+'/contents/data.json',{headers:{Accept:'application/vnd.github.raw+json'},cache:'no-store'});
+  if(r.status==404)throw new Error('Данных пока нет. Откройте приложение и нажмите «Сохранить и отправить».');
+  if(!r.ok)throw new Error('GitHub: ошибка '+r.status);
+  const j=JSON.parse(await r.text()),raw=b64u(j.d),k=await crypto.subtle.importKey('raw',b64u(H.get('k')),'AES-GCM',false,['decrypt']);
+  D=JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:raw.slice(0,12)},k,raw.slice(12))));calc();view();
+}
+(async()=>{try{
+  if(GHM){await loadGH();setInterval(()=>loadGH().catch(()=>{}),120000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)loadGH().catch(()=>{})});return}
+  const m=location.hash.match(/d=([A-Za-z0-9_-]+)/),raw=window.__D||(m&&m[1]);if(!raw)throw 0;D=await unpack(raw);calc();view()
+}catch(e){$('#app').innerHTML='<div class="empty">'+(e&&e.message?esc(e.message):'Ссылка повреждена или неполная.<br>Скопируйте её в приложении заново.')+'</div>'}})();
+</script></body></html>
