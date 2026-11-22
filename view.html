@@ -18,16 +18,30 @@ const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"]/g,c=>(
 let D=null,tab='items',cal=new Date(),sel=null;
 const H=new URLSearchParams(location.hash.slice(1)),GHM=!!(H.get('r')&&H.get('k'));
 const b64u=s=>{s=s.replace(/-/g,'+').replace(/_/g,'/');const b=atob(s),u=new Uint8Array(b.length);for(let i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return u};
+const LS=k=>{try{return localStorage.getItem(k)}catch(e){return null}},LSset=(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}};
+let pend=[];try{pend=JSON.parse(LS('pend')||'[]')}catch(e){}
+let perr='';const savePend=()=>LSset('pend',JSON.stringify(pend));
+function rebuild(){const dn=t=>{const d=new Date(t);return d.getFullYear()*10000+(d.getMonth()+1)*100+d.getDate()};
+  D.l=(D.base||[]).concat(pend.map(o=>{const i=D.p.findIndex(x=>x.i==o.p);return i<0?null:[dn(o.t),i,o.y=='sell'?1:0,o.q,o.q*(o.y=='sell'?D.p[i].f:D.p[i].b)]}).filter(Boolean));calc()}
+async function enc(obj){const k=await crypto.subtle.importKey('raw',b64u(H.get('k')),'AES-GCM',false,['encrypt']),iv=crypto.getRandomValues(new Uint8Array(12)),ct=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},k,new TextEncoder().encode(JSON.stringify(obj)))),a=new Uint8Array(12+ct.length);a.set(iv);a.set(ct,12);let s='';a.forEach(x=>s+=String.fromCharCode(x));return btoa(s)}
+async function send(o){const r=await fetch('https://api.github.com/repos/'+H.get('r')+'/contents/inbox/'+o.u+'.json',{method:'PUT',headers:{Authorization:'Bearer '+LS('gh_token'),Accept:'application/vnd.github+json','Content-Type':'application/json'},body:JSON.stringify({message:'op',content:btoa(JSON.stringify({v:1,d:await enc({u:o.u,t:o.t,p:o.p,y:o.y,q:o.q})}))})});
+  if(r.ok||r.status==422){o.s=1;return}throw new Error('GitHub '+r.status+(r.status==401?' (неверный токен)':r.status==403||r.status==404?' (проверьте права токена)':''))}
+async function flush(){perr='';for(const o of pend.filter(x=>!x.s)){try{await send(o)}catch(e){perr=e.message;break}}savePend()}
+async function addOp(ix,y){if(!LS('gh_token')){alert('Сначала вставьте токен GitHub ниже на этой странице');return}
+  const p=D.P[ix],q=parseInt(prompt(y=='add'?'Сколько единиц поставлено?':'Сколько единиц продано?','1'));if(!(q>0))return;
+  if(y=='sell'&&q>p.a-p.s){alert('Остаток меньше: '+(p.a-p.s));return}
+  pend.push({u:(crypto.randomUUID?crypto.randomUUID():Date.now()+'-'+Math.random().toString(36).slice(2)),t:Date.now(),p:p.i,y,q,s:0});savePend();rebuild();view();await flush();view()}
+const tokCard=()=>GHM&&!LS('gh_token')?'<div class="card"><b>Ввод с телефона</b><div class="mu" style="margin:2px 0 6px">Вставьте токен GitHub один раз. Он хранится только на этом телефоне.</div><input id="tk" type="password" placeholder="github_pat_…" style="width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx)"><button id="tks" style="margin-top:6px">Сохранить токен</button></div>':'';
 async function unpack(s){s=s.replace(/-/g,'+').replace(/_/g,'/');const bin=atob(s),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return JSON.parse(await new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text())}
 function calc(){D.P=D.p.map(p=>({...p,a:0,s:0,inc:0,exp:0}));D.days={};
   D.l.forEach(([d,i,ty,q,amt])=>{const p=D.P[i];if(ty){p.s+=q;p.inc+=amt}else{p.a+=q;p.exp+=amt}(D.days[d]=D.days[d]||[]).push({i,ty,q,amt})})}
 const dnum=(y,m,d)=>y*10000+(m+1)*100+d,dstr=n=>`${n%100}.${String(Math.floor(n/100)%100).padStart(2,'0')}.${Math.floor(n/10000)}`;
 function view(){
   const T=[['items','Товары'],['cal','Календарь'],['chart','График'],['fin','Доход и расход']];
-  let h=`<div class="row"><span class="mu">Данные на ${new Date(D.t).toLocaleString('ru-RU')}</span>${GHM?'<button id="rf">Обновить</button>':''}</div><div class="tabs">${T.map(t=>`<button data-t="${t[0]}" class="${tab==t[0]?'on':''}">${t[1]}</button>`).join('')}</div>`;
+  let h=`<div class="row"><span class="mu">Данные на ${new Date(D.t).toLocaleString('ru-RU')}${pend.length?` · ожидают ПК: ${pend.length}`:''}${perr?` · ${esc(perr)}`:''}</span>${GHM?'<button id="rf">Обновить</button>':''}</div><div class="tabs">${T.map(t=>`<button data-t="${t[0]}" class="${tab==t[0]?'on':''}">${t[1]}</button>`).join('')}</div>`;
   const P=D.P,mx=Math.max(1,...P.map(p=>Math.max(p.a,p.s)));
   if(!P.length)h+='<div class="empty">Нет товаров</div>';
-  else if(tab=='items')h+=P.map(p=>`<div class="card"><div class="row"><b>${esc(p.n)}</b><span><span class="mu">остаток</span> <b>${p.a-p.s}</b></span></div><div class="mu">Закупка ${fmt(p.b)} ₽ · Цена ${fmt(p.f)} ₽ · Конкуренты ${p.c?fmt(p.c)+' ₽':'—'}</div><div class="mu">Поставлено ${p.a} · Продано ${p.s}</div></div>`).join('');
+  else if(tab=='items')h+=P.map((p,ix)=>`<div class="card"><div class="row"><b>${esc(p.n)}</b><span><span class="mu">остаток</span> <b>${p.a-p.s}</b></span></div><div class="mu">Закупка ${fmt(p.b)} ₽ · Цена ${fmt(p.f)} ₽ · Конкуренты ${p.c?fmt(p.c)+' ₽':'—'}</div><div class="mu">Поставлено ${p.a} · Продано ${p.s}</div>${GHM?`<div class="row" style="justify-content:flex-start;margin-top:6px"><button data-a="${ix}">＋ Поставка</button><button data-s="${ix}">Продать</button></div>`:''}</div>`).join('')+tokCard();
   else if(tab=='chart')h+=P.map(p=>`<div class="card"><div class="row"><b>${esc(p.n)}</b><span><b class="a">+${p.a}</b> <b class="s">−${p.s}</b></span></div><div class="tr"><div class="bar" style="width:${p.a/mx*100}%;background:var(--gr);margin:0"></div></div><div class="tr"><div class="bar" style="width:${p.s/mx*100}%;background:var(--rd)"></div></div></div>`).join('');
   else if(tab=='fin'){const I=P.reduce((a,p)=>a+p.inc,0),E=P.reduce((a,p)=>a+p.exp,0);
     h+=`<div class="card row"><div>Доход<br><b class="a">${fmt(I)} ₽</b></div><div>Расход<br><b class="s">${fmt(E)} ₽</b></div><div>Итого<br><b>${fmt(I-E)} ₽</b></div></div>`;
@@ -39,6 +53,9 @@ function view(){
     h+='</div>';
     if(sel&&D.days[sel])h+=`<div class="card" style="margin-top:8px"><b>${dstr(sel)}</b>${['Поставка','Продажа'].map((t,ty)=>`<div style="margin-top:6px" class="${ty?'s':'a'}"><b>${t}</b></div>`+(D.days[sel].filter(o=>o.ty==ty).map(o=>`<div class="row"><span>${esc(P[o.i].n)}</span><b>${o.q} шт.</b></div>`).join('')||'<div class="mu">нет</div>')).join('')}</div>`}
   $('#app').innerHTML=h;
+  document.querySelectorAll('[data-a]').forEach(b=>b.onclick=()=>addOp(+b.dataset.a,'add'));
+  document.querySelectorAll('[data-s]').forEach(b=>b.onclick=()=>addOp(+b.dataset.s,'sell'));
+  if($('#tks'))$('#tks').onclick=()=>{const t=$('#tk').value.trim();if(t){LSset('gh_token',t);view()}};
   if($('#rf'))$('#rf').onclick=()=>loadGH().catch(e=>alert(e.message));
   document.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{tab=b.dataset.t;view()});
   document.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>{cal=new Date(cal.getFullYear(),cal.getMonth()+ +b.dataset.m,1);view()});
@@ -49,7 +66,7 @@ async function loadGH(){
   if(r.status==404)throw new Error('Данных пока нет. Откройте приложение и нажмите «Сохранить и отправить».');
   if(!r.ok)throw new Error('GitHub: ошибка '+r.status);
   const j=JSON.parse(await r.text()),raw=b64u(j.d),k=await crypto.subtle.importKey('raw',b64u(H.get('k')),'AES-GCM',false,['decrypt']);
-  D=JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:raw.slice(0,12)},k,raw.slice(12))));calc();view();
+  D=JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:raw.slice(0,12)},k,raw.slice(12))));D.base=D.l;pend=pend.filter(o=>!(D.a||[]).includes(o.u));savePend();rebuild();view();flush().then(()=>view());
 }
 (async()=>{try{
   if(GHM){await loadGH();setInterval(()=>loadGH().catch(()=>{}),120000);document.addEventListener('visibilitychange',()=>{if(!document.hidden)loadGH().catch(()=>{})});return}
